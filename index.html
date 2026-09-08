@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NFL Showdown — Salaries &amp; Projections</title>
+<style>
+  :root {
+    --navy: #1a2744;
+    --red: #c8102e;
+    --accent: #7fcf8f;
+    --bg: #fafafa;
+    --border: #e2e2e2;
+    --row-alt: #eef1f7;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    background: var(--bg);
+    color: #1a1a1a;
+  }
+  .shell { max-width: 1000px; margin: 0 auto; padding: 16px; }
+
+  /* Matchup banner — the deliberate "showdown" touch: a head-to-head
+     split rather than a plain title, since this tool is always exactly
+     one game, not a season-long database. */
+  .matchup-banner {
+    background: var(--navy);
+    border-radius: 10px 10px 0 0;
+    border-bottom: 3px solid var(--accent);
+    overflow: hidden;
+    padding-top: 10px;
+  }
+  .banner-eyebrow {
+    text-align: center;
+    color: var(--accent);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    margin-bottom: 2px;
+  }
+  .matchup-row {
+    display: flex;
+    align-items: center;
+  }
+  .matchup-side {
+    flex: 1;
+    padding: 10px 20px 18px;
+    text-align: center;
+  }
+  .matchup-side .team {
+    color: #fff;
+    font-size: 20px;
+    font-weight: 800;
+    letter-spacing: 0.3px;
+  }
+  .matchup-side.away { text-align: right; }
+  .matchup-side.home { text-align: left; }
+  .matchup-vs {
+    flex: 0 0 auto;
+    padding: 0 18px 8px;
+    color: var(--accent);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 1px;
+  }
+  .updated-line {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-top: none;
+    padding: 6px 16px;
+    font-size: 11px;
+    color: #8a8f9c;
+    text-align: right;
+  }
+
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-top: none;
+    padding: 10px 14px;
+  }
+  #search {
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 12px;
+    flex: 1;
+    max-width: 260px;
+  }
+
+  .table-wrap { overflow-x: auto; background: #fff; border: 1px solid var(--border); border-top: none; border-radius: 0 0 10px 10px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  thead th {
+    background: var(--navy);
+    color: #fff;
+    padding: 9px 8px;
+    text-align: center;
+    border-bottom: 3px solid var(--accent);
+    cursor: pointer;
+    user-select: none;
+    font-weight: 700;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    white-space: normal;
+  }
+  thead th:first-child { text-align: left; }
+  .arrow { font-size: 10px; color: var(--accent); margin-left: 3px; }
+  tbody td {
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+    text-align: center;
+    white-space: nowrap;
+  }
+  tbody td:first-child { text-align: left; font-weight: 600; }
+  tbody tr:nth-child(even) { background: var(--row-alt); }
+  tbody tr:hover td { filter: brightness(0.96); }
+
+  .table-footer { font-size: 12px; font-style: italic; color: #6b7280; text-align: left; padding: 6px 4px 0; }
+</style>
+</head>
+<body>
+
+<div class="shell">
+  <div class="matchup-banner">
+    <div class="banner-eyebrow">NFL DFS Showdown Projections</div>
+    <div class="matchup-row">
+      <div class="matchup-side away"><span class="team" id="awayTeam"></span></div>
+      <div class="matchup-vs">VS</div>
+      <div class="matchup-side home"><span class="team" id="homeTeam"></span></div>
+    </div>
+  </div>
+  <div class="updated-line" id="updatedLine"></div>
+  <div class="toolbar">
+    <input type="text" id="search" placeholder="Search name or team...">
+  </div>
+  <div class="table-wrap">
+    <table id="dataTable">
+      <thead><tr id="headRow"></tr></thead>
+      <tbody id="bodyRows"></tbody>
+    </table>
+  </div>
+  <div class="table-footer">Salaries &amp; projections: DraftKings &amp; FanDuel</div>
+</div>
+
+<script>
+const COLUMNS = [
+  { key: "name", label: "Player" },
+  { key: "team", label: "Team" },
+  { key: "pos", label: "Pos" },
+  { key: "dkProj", label: "DK Proj", pct: "dkProj_pct", dec: 2 },
+  { key: "dkFppg", label: "DK FPPG", pct: "dkFppg_pct", dec: 2 },
+  { key: "dk", label: "DK FLEX Sal", fmt: "money" },
+  { key: "cptSal", label: "DK CPT Sal", fmt: "money", derive: row => Math.round(row.dk * 1.5 / 100) * 100 },
+  { key: "dkValue", label: "DK/$", pct: "dkValue_pct", dec: 2 },
+  { key: "fdProj", label: "FD Proj", pct: "fdProj_pct", dec: 2 },
+  { key: "fdFppg", label: "FD FPPG", pct: "fdFppg_pct", dec: 2 },
+  { key: "fd", label: "FD Sal", fmt: "money" },
+  { key: "fdValue", label: "FD/$", pct: "fdValue_pct", dec: 2 }
+];
+
+let DATA = { players: [] };
+let sortKey = "dkProj";
+let sortDir = -1;
+let searchTerm = "";
+
+// Same 7-stop blue/orange gradient used across the First Look tools,
+// reused here deliberately for visual consistency across the product suite.
+const STOPS = [
+  [0, [178,24,43]], [1/6, [239,138,98]], [2/6, [253,219,199]],
+  [3/6, [247,247,247]], [4/6, [209,229,240]], [5/6, [103,169,207]], [1, [33,102,172]]
+];
+function lerp(a,b,t){ return a+(b-a)*t; }
+function gradientColor(p) {
+  p = Math.max(0, Math.min(1, p));
+  let lo = STOPS[0], hi = STOPS[STOPS.length-1];
+  for (let i=0;i<STOPS.length-1;i++){
+    if (p>=STOPS[i][0] && p<=STOPS[i+1][0]) { lo=STOPS[i]; hi=STOPS[i+1]; break; }
+  }
+  const t = (p - lo[0]) / (hi[0] - lo[0] || 1);
+  const r = Math.round(lerp(lo[1][0], hi[1][0], t));
+  const g = Math.round(lerp(lo[1][1], hi[1][1], t));
+  const b = Math.round(lerp(lo[1][2], hi[1][2], t));
+  const lum = 0.299*r + 0.587*g + 0.114*b;
+  return { bg: `rgb(${r},${g},${b})`, text: lum > 150 ? "#000" : "#fff" };
+}
+
+// Tie-safe percentile: identical raw values always get identical percentiles,
+// via average-rank rather than sort-position (avoids the same tie bug we
+// caught and fixed on the MLB build).
+function computePercentiles(rows, key, pctKey) {
+  const vals = rows.map(r => r[key]).filter(v => v !== null && v !== undefined);
+  const n = vals.length;
+  if (n < 2) { rows.forEach(r => r[pctKey] = null); return; }
+  const sorted = [...vals].sort((a,b) => a-b);
+  rows.forEach(r => {
+    const v = r[key];
+    if (v === null || v === undefined) { r[pctKey] = null; return; }
+    let first = sorted.indexOf(v);
+    let last = sorted.lastIndexOf(v);
+    const avgPosition = (first + last) / 2;
+    r[pctKey] = avgPosition / (n - 1);
+  });
+}
+
+function fmt(val, type, dec) {
+  if (val === null || val === undefined || val === "") return "—";
+  if (type === "money") return "$" + Number(val).toLocaleString();
+  if (dec !== undefined && dec !== null) return Number(val).toFixed(dec);
+  return val;
+}
+
+function render() {
+  const headRow = document.getElementById("headRow");
+  headRow.innerHTML = "";
+  COLUMNS.forEach(col => {
+    const th = document.createElement("th");
+    th.textContent = col.label;
+    if (sortKey === col.key) {
+      const arrow = document.createElement("span");
+      arrow.className = "arrow";
+      arrow.textContent = sortDir === 1 ? "▲" : "▼";
+      th.appendChild(arrow);
+    }
+    th.addEventListener("click", () => {
+      if (sortKey === col.key) sortDir *= -1; else { sortKey = col.key; sortDir = 1; }
+      render();
+    });
+    headRow.appendChild(th);
+  });
+
+  let rows = DATA.players.slice();
+  const q = searchTerm.trim().toLowerCase();
+  if (q) rows = rows.filter(r => (r.name || "").toLowerCase().includes(q) || (r.team || "").toLowerCase().includes(q));
+
+  if (sortKey) {
+    const sortCol = COLUMNS.find(c => c.key === sortKey);
+    rows.sort((a, b) => {
+      let av = sortCol && sortCol.derive ? sortCol.derive(a) : a[sortKey];
+      let bv = sortCol && sortCol.derive ? sortCol.derive(b) : b[sortKey];
+      if (av === null || av === undefined) av = -Infinity;
+      if (bv === null || bv === undefined) bv = -Infinity;
+      if (typeof av === "string") return av.localeCompare(bv) * sortDir;
+      return (av - bv) * sortDir;
+    });
+  }
+
+  const tbody = document.getElementById("bodyRows");
+  tbody.innerHTML = "";
+  rows.forEach(row => {
+    const tr = document.createElement("tr");
+    COLUMNS.forEach(col => {
+      const td = document.createElement("td");
+      const val = col.derive ? col.derive(row) : row[col.key];
+      td.textContent = fmt(val, col.fmt, col.dec);
+      if (col.pct && row[col.pct] !== null && row[col.pct] !== undefined) {
+        const c = gradientColor(row[col.pct]);
+        td.style.background = c.bg;
+        td.style.color = c.text;
+      }
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+}
+
+document.getElementById("search").addEventListener("input", e => { searchTerm = e.target.value; render(); });
+
+fetch("data.json")
+  .then(r => r.json())
+  .then(json => {
+    DATA = json;
+    document.getElementById("awayTeam").textContent = json.away || "";
+    document.getElementById("homeTeam").textContent = json.home || "";
+    document.title = (json.matchup || "NFL Showdown") + " — Salaries & Projections";
+    if (json.lastUpdated) {
+      const d = new Date(json.lastUpdated);
+      document.getElementById("updatedLine").textContent = "Last updated: " + d.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+    }
+    computePercentiles(DATA.players, "dkProj", "dkProj_pct");
+    computePercentiles(DATA.players, "fdProj", "fdProj_pct");
+    computePercentiles(DATA.players, "dkFppg", "dkFppg_pct");
+    computePercentiles(DATA.players, "fdFppg", "fdFppg_pct");
+    computePercentiles(DATA.players, "dkValue", "dkValue_pct");
+    computePercentiles(DATA.players, "fdValue", "fdValue_pct");
+    render();
+  })
+  .catch(err => {
+    document.getElementById("bodyRows").innerHTML =
+      '<tr><td colspan="8" style="padding:20px;text-align:center;color:#999;">Could not load data.json — if opening this file directly (file://), it needs to be served over http(s), e.g. via GitHub Pages.</td></tr>';
+    console.error(err);
+  });
+</script>
+
+</body>
+</html>
